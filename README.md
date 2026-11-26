@@ -74,7 +74,7 @@ curl -s http://127.0.0.1:3000/mcp \
         }
       }
     }
-  }'
+  }' | jq -C
 ```
 
 **2. List tools:**
@@ -99,7 +99,7 @@ curl -s http://127.0.0.1:3000/mcp \
         }
       }
     }
-  }'
+  }' | jq -C
 ```
 
 **3. Call a tool:**
@@ -129,7 +129,7 @@ curl -s http://127.0.0.1:3000/mcp \
         }
       }
     }
-  }'
+  }' | jq -C
 ```
 
 ## Data notes
