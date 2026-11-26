@@ -1,5 +1,5 @@
 import { createMcpHonoApp } from '@modelcontextprotocol/hono';
-import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/server';
+import { createMcpHandler } from '@modelcontextprotocol/server';
 import type { Hono } from 'hono';
 import { logger } from 'hono/logger';
 
@@ -18,6 +18,7 @@ function jsonRpcError(code: number, message: string) {
 export function createApp(options: AppOptions = {}): Hono<McpEnv> {
   // The SDK returns an untyped Hono, but it does set `parsedBody`.
   const app = createMcpHonoApp() as unknown as Hono<McpEnv>;
+  const mcp = createMcpHandler(() => createServer(), { legacy: 'reject', responseMode: 'json' });
 
   if (options.log)
     app.use(
@@ -27,19 +28,7 @@ export function createApp(options: AppOptions = {}): Hono<McpEnv> {
 
   app.get('/health', (c) => c.json({ status: 'ok' }));
 
-  app.post('/mcp', async (c) => {
-    const server = createServer();
-    const transport = new WebStandardStreamableHTTPServerTransport({
-      sessionIdGenerator: undefined,
-      enableJsonResponse: true,
-    });
-    try {
-      await server.connect(transport);
-      return await transport.handleRequest(c.req.raw, { parsedBody: c.get('parsedBody') });
-    } finally {
-      await server.close();
-    }
-  });
+  app.post('/mcp', (c) => mcp.fetch(c.req.raw, { parsedBody: c.get('parsedBody') }));
 
   app.all('/mcp', (c) => {
     c.header('Allow', 'POST');

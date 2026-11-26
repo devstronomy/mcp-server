@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../src/http.ts';
 import { SERVER_NAME } from '../src/server.ts';
 
-const PROTOCOL_VERSION = '2025-11-25';
+const PROTOCOL_VERSION = '2026-07-28';
 
 let httpServer: ServerType;
 let base: string;
@@ -24,50 +24,99 @@ afterAll(async () => {
   await new Promise((resolve) => httpServer.close(resolve));
 });
 
-function rpc(body: unknown, headers: Record<string, string> = {}) {
+interface RpcOptions {
+  id?: number;
+  params?: Record<string, unknown>;
+  name?: string;
+  version?: string;
+  headers?: Record<string, string>;
+}
+
+function post(body: unknown, headers: Record<string, string>) {
   return fetch(`${base}/mcp`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json, text/event-stream',
-      ...headers,
-    },
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', ...headers },
     body: JSON.stringify(body),
   });
 }
 
+function rpc(method: string, { id = 1, params = {}, name, version = PROTOCOL_VERSION, headers = {} }: RpcOptions = {}) {
+  const _meta = {
+    'io.modelcontextprotocol/protocolVersion': version,
+    'io.modelcontextprotocol/clientCapabilities': {},
+    'io.modelcontextprotocol/clientInfo': { name: 'smoke', version: '0' },
+  };
+  return post(
+    { jsonrpc: '2.0', id, method, params: { ...params, _meta } },
+    {
+      'MCP-Protocol-Version': version,
+      'Mcp-Method': method,
+      ...(name && { 'Mcp-Name': name }),
+      ...headers,
+    },
+  );
+}
+
 describe('HTTP', () => {
-  it('answers initialize with plain JSON and no session', async () => {
-    const res = await rpc({
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'initialize',
-      params: { protocolVersion: PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: 'smoke', version: '0' } },
-    });
+  it('answers server/discover with plain JSON and no session', async () => {
+    const res = await rpc('server/discover');
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toMatch(/^application\/json/);
     expect(res.headers.get('mcp-session-id')).toBeNull();
-    const body = await res.json();
-    expect(body).toMatchObject({ jsonrpc: '2.0', id: 1, result: { serverInfo: { name: SERVER_NAME } } });
+    expect(await res.json()).toMatchObject({
+      jsonrpc: '2.0',
+      id: 1,
+      result: {
+        resultType: 'complete',
+        supportedVersions: [PROTOCOL_VERSION],
+        _meta: { 'io.modelcontextprotocol/serverInfo': { name: SERVER_NAME } },
+      },
+    });
   });
 
-  it('answers tools/list in a separate, stateless request', async () => {
-    const res = await rpc(
-      { jsonrpc: '2.0', id: 2, method: 'tools/list' },
-      { 'MCP-Protocol-Version': PROTOCOL_VERSION },
-    );
+  it('answers tools/list', async () => {
+    const res = await rpc('tools/list', { id: 2 });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { result: { tools: Array<{ name: string }> } };
+    const body = (await res.json()) as { result: { resultType: string; tools: Array<{ name: string }> } };
+    expect(body.result.resultType).toBe('complete');
     expect(body.result.tools.map((t) => t.name).sort()).toEqual(['get_planet', 'list_moons']);
   });
 
+  it('answers tools/call', async () => {
+    const res = await rpc('tools/call', {
+      id: 3,
+      name: 'get_planet',
+      params: { name: 'get_planet', arguments: { name: 'Mars' } },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ result: { structuredContent: { name: 'Mars' } } });
+  });
+
+  it('rejects the 2025-era initialize handshake', async () => {
+    const res = await post(
+      {
+        jsonrpc: '2.0',
+        id: 4,
+        method: 'initialize',
+        params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'smoke', version: '0' } },
+      },
+      {},
+    );
+    expect(await res.json()).toMatchObject({ id: 4, error: { code: -32022, data: { supported: [PROTOCOL_VERSION] } } });
+  });
+
+  it('rejects an unknown protocol version', async () => {
+    const res = await rpc('tools/list', { id: 5, version: '2099-01-01' });
+    expect(await res.json()).toMatchObject({ id: 5, error: { code: -32022 } });
+  });
+
   it('accepts a localhost Origin', async () => {
-    const res = await rpc({ jsonrpc: '2.0', id: 3, method: 'ping' }, { Origin: 'http://localhost:6274' });
+    const res = await rpc('server/discover', { headers: { Origin: 'http://localhost:6274' } });
     expect(res.status).toBe(200);
   });
 
   it('rejects a disallowed Origin with 403', async () => {
-    const res = await rpc({ jsonrpc: '2.0', id: 4, method: 'ping' }, { Origin: 'https://evil.example' });
+    const res = await rpc('server/discover', { headers: { Origin: 'https://evil.example' } });
     expect(res.status).toBe(403);
   });
 
@@ -76,7 +125,7 @@ describe('HTTP', () => {
     const res = await createApp().request('/mcp', {
       method: 'POST',
       headers: { Host: 'evil.example', 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 5, method: 'ping' }),
+      body: JSON.stringify({ jsonrpc: '2.0', id: 6, method: 'server/discover' }),
     });
     expect(res.status).toBe(403);
   });

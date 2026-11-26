@@ -50,16 +50,31 @@ Choose the "Streamable HTTP" transport and enter `http://127.0.0.1:3000/mcp`.
 
 This shows the protocol with nothing in between. Every MCP message is a JSON-RPC 2.0 request sent with `POST /mcp`.
 
-- Clients must send `Accept: application/json, text/event-stream`, even though this server only answers with JSON.
-- After `initialize`, send the negotiated version in the `MCP-Protocol-Version` header.
+The server speaks MCP `2026-07-28` (no handshake).
 
-**1. Initialize** (handshake: agree on the protocol version, exchange capabilities):
+**1. Discover the server** (optional: supported versions, capabilities, identity):
 
 ```sh
 curl -s http://127.0.0.1:3000/mcp \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"curl","version":"0"}}}'
+  -H 'MCP-Protocol-Version: 2026-07-28' \
+  -H 'Mcp-Method: server/discover' \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "server/discover",
+    "params": {
+      "_meta": {
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientCapabilities": {},
+        "io.modelcontextprotocol/clientInfo": {
+          "name": "curl",
+          "version": "0"
+        }
+      }
+    }
+  }'
 ```
 
 **2. List tools:**
@@ -68,8 +83,23 @@ curl -s http://127.0.0.1:3000/mcp \
 curl -s http://127.0.0.1:3000/mcp \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \
-  -H 'MCP-Protocol-Version: 2025-11-25' \
-  -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
+  -H 'MCP-Protocol-Version: 2026-07-28' \
+  -H 'Mcp-Method: tools/list' \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/list",
+    "params": {
+      "_meta": {
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientCapabilities": {},
+        "io.modelcontextprotocol/clientInfo": {
+          "name": "curl",
+          "version": "0"
+        }
+      }
+    }
+  }'
 ```
 
 **3. Call a tool:**
@@ -78,8 +108,28 @@ curl -s http://127.0.0.1:3000/mcp \
 curl -s http://127.0.0.1:3000/mcp \
   -H 'Content-Type: application/json' \
   -H 'Accept: application/json, text/event-stream' \
-  -H 'MCP-Protocol-Version: 2025-11-25' \
-  -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"get_planet","arguments":{"name":"mars"}}}'
+  -H 'MCP-Protocol-Version: 2026-07-28' \
+  -H 'Mcp-Method: tools/call' \
+  -H 'Mcp-Name: get_planet' \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "tools/call",
+    "params": {
+      "name": "get_planet",
+      "arguments": {
+        "name": "mars"
+      },
+      "_meta": {
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientCapabilities": {},
+        "io.modelcontextprotocol/clientInfo": {
+          "name": "curl",
+          "version": "0"
+        }
+      }
+    }
+  }'
 ```
 
 ## Data notes
